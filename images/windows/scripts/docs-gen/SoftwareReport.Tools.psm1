@@ -5,7 +5,7 @@ function Get-Aria2Version {
 }
 
 function Get-AzCosmosDBEmulatorVersion {
-    $regKey = gci HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\* | gp | ? { $_.DisplayName -eq 'Azure Cosmos DB Emulator' }
+    $regKey = Get-ChildItem HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\* | Get-ItemProperty | Where-Object { $_.DisplayName -eq 'Azure Cosmos DB Emulator' }
     $installDir = $regKey.InstallLocation
     $exeFilePath = Join-Path $installDir 'CosmosDB.Emulator.exe'
     $version = (Get-Item $exeFilePath).VersionInfo.FileVersion
@@ -144,7 +144,7 @@ function Get-OpenSSLVersion {
 }
 
 function Get-PackerVersion {
-    $packerVersion = (packer --version | Select-String "^Packer").Line.Replace('v','') | Get-StringPart -Part 1
+    $packerVersion = (packer --version | Select-String "^Packer").Line.Replace('v', '') | Get-StringPart -Part 1
     return $packerVersion
 }
 
@@ -193,7 +193,7 @@ function Get-ZstdVersion {
 }
 
 function Get-AzureCLIVersion {
-    $azureCLIVersion = $(az version) | ConvertFrom-Json | Foreach{ $_."azure-cli" }
+    $azureCLIVersion = $(az version) | ConvertFrom-Json | ForEach-Object { $_."azure-cli" }
     return $azureCLIVersion
 }
 
@@ -290,9 +290,9 @@ function Get-VisualCPPComponents {
             $arch = $matches["Arch"].ToLower()
             $version = $_.DisplayVersion
             [PSCustomObject]@{
-                Name = $name
+                Name         = $name
                 Architecture = $arch
-                Version = $version
+                Version      = $version
             }
         }
     }
@@ -325,4 +325,16 @@ function Get-WSL2Version {
 
 function Get-NinjaVersion {
     return $(ninja --version)
+}
+
+function Get-CloudBaseInitVersion {
+    $cloudbaseService = Get-Service -Name "cloudbase-init" -ErrorAction SilentlyContinue
+    if ($cloudbaseService) {
+        $cloudbasePath = (Get-CimInstance Win32_Service -Filter "Name='cloudbase-init'").PathName
+        $cloudbasePath = $cloudbasePath -replace '^"(.+?)".*$', '$1'
+        $version = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($cloudbasePath).ProductVersion
+        return $version
+    } else {
+        return "Not Installed"
+    }
 }

@@ -71,6 +71,7 @@ $tools.AddToolVersion("Bazel", $(Get-BazelVersion))
 $tools.AddToolVersion("Bazelisk", $(Get-BazeliskVersion))
 $tools.AddToolVersion("Bicep", $(Get-BicepVersion))
 $tools.AddToolVersion("Cabal", $(Get-CabalVersion))
+$tools.AddToolVersion("CloudBase-Init", $(Get-CloudBaseInitVersion))
 $tools.AddToolVersion("CMake", $(Get-CMakeVersion))
 $tools.AddToolVersion("CodeQL Action Bundle", $(Get-CodeQLBundleVersion))
 $tools.AddToolVersion("Docker", $(Get-DockerVersion))
@@ -175,8 +176,7 @@ Note: MSYS2 is pre-installed on image but not added to PATH.
 $msys2.AddHeader("Notes").AddNote($notes)
 
 # BizTalk Server
-if (Test-IsWin19)
-{
+if (Test-IsWin19) {
     $installedSoftware.AddHeader("BizTalk Server").AddNode($(Get-BizTalkVersion))
 }
 
