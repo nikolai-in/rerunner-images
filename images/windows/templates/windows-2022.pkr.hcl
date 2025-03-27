@@ -98,10 +98,9 @@ variable "cdrom_drive" {
   default     = "D:"
 }
 
-variable "product_key" {
-  type        = string
-  description = "Windows product key"
-  default     = "VDYBN-27WPP-V4HQT-9VMD4-VMK7H"
+variable "user_data" {
+  type    = string
+  default = "<UserData><ProductKey><Key>VDYBN-27WPP-V4HQT-9VMD4-VMK7H</Key></ProductKey><AcceptEula>true</AcceptEula></UserData>"
 }
 
 variable "timezone" {
@@ -200,7 +199,7 @@ source "proxmox-iso" "windows" {
       "autounattend.xml" = templatefile("../assets/base-image/unattend.pkrtpl", {
         password    = var.install_password,
         cdrom_drive = var.cdrom_drive,
-        product_key = var.product_key,
+        user_data   = var.user_data,
         timezone    = var.timezone,
         index       = var.image_index
       })
