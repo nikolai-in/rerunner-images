@@ -1,56 +1,127 @@
-locals {
-  managed_image_name = var.managed_image_name != "" ? var.managed_image_name : "packer-${var.image_os}-${var.image_version}"
+packer {
+  required_plugins {
+    windows-update = {
+      version = "~> 0.16.9"
+      source  = "github.com/rgl/windows-update"
+    }
+    proxmox = {
+      version = "~> 1"
+      source  = "github.com/hashicorp/proxmox"
+    }
+  }
 }
 
-variable "agent_tools_directory" {
+// Proxmox Connection Settings
+variable "proxmox_url" {
+  type        = string
+  description = "Proxmox Server URL"
+}
+
+variable "proxmox_user" {
+  type        = string
+  description = "Proxmox username"
+  sensitive   = true
+}
+
+variable "proxmox_password" {
+  type        = string
+  description = "Proxmox password"
+  sensitive   = true
+}
+
+variable "node" {
+  type        = string
+  description = "Proxmox cluster node"
+}
+
+// Proxmox Storage Configuration
+variable "iso_storage" {
+  type        = string
+  description = "Proxmox storage location for additional iso files"
+}
+
+variable "efi_storage" {
+  type        = string
+  description = "Location of EFI storage on proxmox host"
+}
+
+variable "cloud_init_storage" {
+  type        = string
+  description = "Loaction of cloud-init files/iso/yaml config"
+}
+
+variable "disk_storage" {
+  type        = string
+  description = "Disk storage location"
+}
+
+// VM Hardware Configuration
+variable "memory" {
+  type        = number
+  description = "VM memory in MB"
+  default     = 8192
+}
+
+variable "cores" {
+  type        = number
+  description = "Amount of CPU cores"
+  default     = 2
+}
+
+variable "socket" {
+  type        = number
+  description = "Amount of CPU sockets"
+  default     = 1
+}
+
+variable "disk_size_gb" {
+  type        = string
+  description = " Disk size including GB so <size>GB"
+  default     = "256G"
+}
+
+variable "bridge" {
+  type        = string
+  description = "Network bridge name"
+  default     = "vmbr0"
+}
+
+// OS Installation Parameters
+variable "windows_iso" {
+  type        = string
+  description = "Location of ISO file in the Proxmox environment"
+}
+
+variable "cdrom_drive" {
+  type        = string
+  description = "CD-ROM Driveletter for extra iso"
+  default     = "D:"
+}
+
+variable "product_key" {
+  type        = string
+  description = "Windows product key"
+  default     = "VDYBN-27WPP-V4HQT-9VMD4-VMK7H"
+}
+
+variable "timezone" {
+  type        = string
+  description = "Windows timezone"
+  default     = "W. Europe Standard Time"
+}
+
+variable "image_index" {
   type    = string
-  default = "C:\\hostedtoolcache\\windows"
+  default = "Windows Server 2022 Datacenter (Desktop Experience)"
 }
 
-variable "allowed_inbound_ip_addresses" {
-  type    = list(string)
-  default = []
-}
-
-variable "azure_tags" {
-  type    = map(string)
-  default = {}
-}
-
-variable "build_resource_group_name" {
-  type    = string
-  default = "${env("BUILD_RESOURCE_GROUP_NAME")}"
-}
-
-variable "client_cert_path" {
-  type    = string
-  default = "${env("ARM_CLIENT_CERT_PATH")}"
-}
-
-variable "client_id" {
-  type    = string
-  default = "${env("ARM_CLIENT_ID")}"
-}
-
-variable "client_secret" {
-  type      = string
-  default   = "${env("ARM_CLIENT_SECRET")}"
-  sensitive = true
-}
-
-variable "helper_script_folder" {
-  type    = string
-  default = "C:\\Program Files\\WindowsPowerShell\\Modules\\"
-}
-
-variable "image_folder" {
-  type    = string
-  default = "C:\\image"
-}
-
+// Windows System Paths and Configuration
 variable "image_os" {
-  type    = string
-  default = "win22"
+  type = string
+  validation {
+    condition     = contains(["win19", "win22", "win25"], var.image_os)
+    error_message = "The image_os variable must be a win19, win22, or win25."
+  }
 }
 
 variable "image_version" {
@@ -58,132 +129,139 @@ variable "image_version" {
   default = "dev"
 }
 
+variable "image_folder" {
+  type    = string
+  default = "C:\\image"
+}
+
 variable "imagedata_file" {
   type    = string
   default = "C:\\imagedata.json"
 }
 
+variable "agent_tools_directory" {
+  type    = string
+  default = "C:\\hostedtoolcache\\windows"
+}
+
 variable "temp_dir" {
   type    = string
-  default = "D:\\temp"
+  default = "C:\\Users\\Administrator\\AppData\\Local\\Temp\\"
+}
+
+variable "helper_script_folder" {
+  type    = string
+  default = "C:\\Program Files\\WindowsPowerShell\\Modules\\"
+}
+
+// WinRM Connection Settings
+variable "install_user" {
+  type      = string
+  default   = "Administrator"
+  sensitive = true
 }
 
 variable "install_password" {
   type      = string
-  default   = ""
   sensitive = true
 }
 
-variable "install_user" {
-  type    = string
-  default = "installer"
-}
+source "proxmox-iso" "windows" {
 
-variable "location" {
-  type    = string
-  default = "${env("ARM_RESOURCE_LOCATION")}"
-}
+  # Proxmox Host Connection
+  proxmox_url              = var.proxmox_url
+  insecure_skip_tls_verify = true
+  username                 = var.proxmox_user
+  password                 = var.proxmox_password
+  node                     = var.node
 
-variable "managed_image_name" {
-  type    = string
-  default = ""
-}
+  # BIOS - UEFI
+  bios = "ovmf"
 
-variable "managed_image_resource_group_name" {
-  type    = string
-  default = "${env("ARM_RESOURCE_GROUP")}"
-}
+  # Machine type
+  # Q35 less resource overhead and newer chipset
+  machine = "q35"
 
-variable "managed_image_storage_account_type" {
-  type    = string
-  default = "Premium_LRS"
-}
-
-variable "object_id" {
-  type    = string
-  default = "${env("ARM_OBJECT_ID")}"
-}
-
-variable "private_virtual_network_with_public_ip" {
-  type    = bool
-  default = false
-}
-
-variable "subscription_id" {
-  type    = string
-  default = "${env("ARM_SUBSCRIPTION_ID")}"
-}
-
-variable "temp_resource_group_name" {
-  type    = string
-  default = "${env("TEMP_RESOURCE_GROUP_NAME")}"
-}
-
-variable "tenant_id" {
-  type    = string
-  default = "${env("ARM_TENANT_ID")}"
-}
-
-variable "virtual_network_name" {
-  type    = string
-  default = "${env("VNET_NAME")}"
-}
-
-variable "virtual_network_resource_group_name" {
-  type    = string
-  default = "${env("VNET_RESOURCE_GROUP")}"
-}
-
-variable "virtual_network_subnet_name" {
-  type    = string
-  default = "${env("VNET_SUBNET")}"
-}
-
-variable "vm_size" {
-  type    = string
-  default = "Standard_F8s_v2"
-}
-
-source "azure-arm" "image" {
-  allowed_inbound_ip_addresses           = "${var.allowed_inbound_ip_addresses}"
-  build_resource_group_name              = "${var.build_resource_group_name}"
-  client_cert_path                       = "${var.client_cert_path}"
-  client_id                              = "${var.client_id}"
-  client_secret                          = "${var.client_secret}"
-  communicator                           = "winrm"
-  image_offer                            = "WindowsServer"
-  image_publisher                        = "MicrosoftWindowsServer"
-  image_sku                              = "2022-Datacenter"
-  location                               = "${var.location}"
-  managed_image_name                     = "${local.managed_image_name}"
-  managed_image_resource_group_name      = "${var.managed_image_resource_group_name}"
-  managed_image_storage_account_type     = "${var.managed_image_storage_account_type}"
-  object_id                              = "${var.object_id}"
-  os_disk_size_gb                        = "256"
-  os_type                                = "Windows"
-  private_virtual_network_with_public_ip = "${var.private_virtual_network_with_public_ip}"
-  subscription_id                        = "${var.subscription_id}"
-  temp_resource_group_name               = "${var.temp_resource_group_name}"
-  tenant_id                              = "${var.tenant_id}"
-  virtual_network_name                   = "${var.virtual_network_name}"
-  virtual_network_resource_group_name    = "${var.virtual_network_resource_group_name}"
-  virtual_network_subnet_name            = "${var.virtual_network_subnet_name}"
-  vm_size                                = "${var.vm_size}"
-  winrm_insecure                         = "true"
-  winrm_use_ssl                          = "true"
-  winrm_username                         = "packer"
-
-  dynamic "azure_tag" {
-    for_each = var.azure_tags
-    content {
-      name  = azure_tag.key
-      value = azure_tag.value
-    }
+  efi_config {
+    efi_storage_pool  = var.efi_storage
+    pre_enrolled_keys = true
+    efi_type          = "4m"
   }
+
+  boot_iso {
+    iso_file         = var.windows_iso
+    iso_storage_pool = var.iso_storage
+    unmount          = true
+  }
+
+  additional_iso_files {
+    cd_files = ["../assets/base-image/drivers/*", "../assets/base-image/Configure-RemotingForAnsible.ps1", "../assets/base-image/software/virtio-win-guest-tools.exe"]
+    cd_content = {
+      "autounattend.xml" = templatefile("../assets/base-image/unattend.pkrtpl", {
+        password    = var.install_password,
+        cdrom_drive = var.cdrom_drive,
+        product_key = var.product_key,
+        timezone    = var.timezone,
+        index       = var.image_index
+      })
+    }
+    cd_label         = "Unattend"
+    iso_storage_pool = var.iso_storage
+    unmount          = true
+    type             = "sata"
+    index            = 0
+  }
+
+  template_name           = "templ-win22-runner"
+  template_description    = "Created on: ${timestamp()}"
+  vm_name                 = "win-runner"
+  memory                  = var.memory
+  cores                   = var.cores
+  sockets                 = var.socket
+  cpu_type                = "host"
+  os                      = "win10"
+  scsi_controller         = "virtio-scsi-pci"
+  cloud_init              = true
+  cloud_init_storage_pool = var.cloud_init_storage
+  serials                 = ["socket"]
+
+  # Network
+  network_adapters {
+    model  = "virtio"
+    bridge = var.bridge
+  }
+
+  # Storage
+  disks {
+    storage_pool = var.disk_storage
+    type         = "scsi"
+    disk_size    = var.disk_size_gb
+    cache_mode   = "writeback"
+    format       = "raw"
+  }
+
+  # WinRM
+  communicator   = "winrm"
+  winrm_username = var.install_user
+  winrm_password = var.install_password
+  winrm_timeout  = "1h"
+  winrm_port     = "5986"
+  winrm_use_ssl  = true
+  winrm_insecure = true
+
+  # Boot
+  boot      = "order=scsi0"
+  boot_wait = "3s"
+  boot_command = [
+    "<enter><wait><enter>",
+  ]
+
 }
+
 
 build {
-  sources = ["source.azure-arm.image"]
+  name    = "Proxmox Build"
+  sources = ["source.proxmox-iso.windows"]
 
   provisioner "powershell" {
     inline = [
@@ -194,7 +272,7 @@ build {
 
   provisioner "file" {
     destination = "${var.image_folder}\\"
-    sources     = [
+    sources = [
       "${path.root}/../assets",
       "${path.root}/../scripts",
       "${path.root}/../toolsets"
@@ -243,7 +321,7 @@ build {
   provisioner "powershell" {
     environment_vars = ["IMAGE_VERSION=${var.image_version}", "IMAGE_OS=${var.image_os}", "AGENT_TOOLSDIRECTORY=${var.agent_tools_directory}", "IMAGEDATA_FILE=${var.imagedata_file}", "IMAGE_FOLDER=${var.image_folder}", "TEMP_DIR=${var.temp_dir}"]
     execution_policy = "unrestricted"
-    scripts          = [
+    scripts = [
       "${path.root}/../scripts/build/Configure-WindowsDefender.ps1",
       "${path.root}/../scripts/build/Configure-PowerShell.ps1",
       "${path.root}/../scripts/build/Install-PowerShellModules.ps1",
@@ -268,7 +346,7 @@ build {
 
   provisioner "powershell" {
     environment_vars = ["IMAGE_FOLDER=${var.image_folder}", "TEMP_DIR=${var.temp_dir}"]
-    scripts          = [
+    scripts = [
       "${path.root}/../scripts/build/Install-Docker.ps1",
       "${path.root}/../scripts/build/Install-DockerWinCred.ps1",
       "${path.root}/../scripts/build/Install-DockerCompose.ps1",
@@ -287,11 +365,11 @@ build {
     elevated_password = "${var.install_password}"
     elevated_user     = "${var.install_user}"
     environment_vars  = ["IMAGE_FOLDER=${var.image_folder}", "TEMP_DIR=${var.temp_dir}"]
-    scripts           = [
+    scripts = [
       "${path.root}/../scripts/build/Install-VisualStudio.ps1",
       "${path.root}/../scripts/build/Install-KubernetesTools.ps1"
     ]
-    valid_exit_codes  = [0, 3010]
+    valid_exit_codes = [0, 3010]
   }
 
   provisioner "windows-restart" {
@@ -302,7 +380,7 @@ build {
   provisioner "powershell" {
     pause_before     = "2m0s"
     environment_vars = ["IMAGE_FOLDER=${var.image_folder}", "TEMP_DIR=${var.temp_dir}"]
-    scripts          = [
+    scripts = [
       "${path.root}/../scripts/build/Install-Wix.ps1",
       "${path.root}/../scripts/build/Install-WDK.ps1",
       "${path.root}/../scripts/build/Install-VSExtensions.ps1",
@@ -331,7 +409,7 @@ build {
 
   provisioner "powershell" {
     environment_vars = ["IMAGE_FOLDER=${var.image_folder}", "TEMP_DIR=${var.temp_dir}"]
-    scripts          = [
+    scripts = [
       "${path.root}/../scripts/build/Install-ActionsCache.ps1",
       "${path.root}/../scripts/build/Install-Ruby.ps1",
       "${path.root}/../scripts/build/Install-PyPy.ps1",
@@ -385,7 +463,7 @@ build {
     elevated_password = "${var.install_password}"
     elevated_user     = "${var.install_user}"
     environment_vars  = ["IMAGE_FOLDER=${var.image_folder}", "TEMP_DIR=${var.temp_dir}"]
-    scripts           = [
+    scripts = [
       "${path.root}/../scripts/build/Install-WindowsUpdates.ps1",
       "${path.root}/../scripts/build/Configure-DynamicPort.ps1",
       "${path.root}/../scripts/build/Configure-GDIProcessHandleQuota.ps1",
@@ -404,7 +482,7 @@ build {
   provisioner "powershell" {
     pause_before     = "2m0s"
     environment_vars = ["IMAGE_FOLDER=${var.image_folder}", "TEMP_DIR=${var.temp_dir}"]
-    scripts          = [
+    scripts = [
       "${path.root}/../scripts/build/Install-WindowsUpdatesAfterReboot.ps1",
       "${path.root}/../scripts/build/Invoke-Cleanup.ps1",
       "${path.root}/../scripts/tests/RunAll-Tests.ps1"
@@ -438,12 +516,12 @@ build {
 
   provisioner "powershell" {
     environment_vars = ["INSTALL_USER=${var.install_user}"]
-    scripts          = [
+    scripts = [
       "${path.root}/../scripts/build/Install-NativeImages.ps1",
       "${path.root}/../scripts/build/Configure-System.ps1",
       "${path.root}/../scripts/build/Configure-User.ps1"
     ]
-    skip_clean       = true
+    skip_clean = true
   }
 
   provisioner "windows-restart" {
