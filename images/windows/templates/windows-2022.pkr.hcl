@@ -275,22 +275,6 @@ build {
     ]
   }
 
-  provisioner "powershell" {
-    script       = "../scripts/build/Install-CloudBase.ps1"
-    pause_before = "1m"
-  }
-
-  provisioner "file" {
-    source      = "../assets/base-image/config/"
-    destination = "C://Program Files//Cloudbase Solutions//Cloudbase-Init//conf"
-  }
-
-  provisioner "powershell" {
-    inline = [
-      "Set-Service cloudbase-init -StartupType Manual",
-      "Stop-Service cloudbase-init -Force -Confirm:$false"
-    ]
-  }
 
   provisioner "powershell" {
     inline = [
@@ -341,11 +325,11 @@ build {
     inline = ["if (-not ((net localgroup Administrators) -contains '${var.install_user}')) { exit 1 }"]
   }
 
-  provisioner "powershell" {
-    elevated_password = "${var.install_password}"
-    elevated_user     = "${var.install_user}"
-    inline            = ["bcdedit.exe /set TESTSIGNING ON"]
-  }
+  # provisioner "powershell" {
+  # elevated_password = "${var.install_password}"
+  # elevated_user     = "${var.install_user}"
+  # inline            = ["bcdedit.exe /set TESTSIGNING ON"]
+  # }
 
   provisioner "powershell" {
     environment_vars = ["IMAGE_VERSION=${var.image_version}", "IMAGE_OS=${var.image_os}", "AGENT_TOOLSDIRECTORY=${var.agent_tools_directory}", "IMAGEDATA_FILE=${var.imagedata_file}", "IMAGE_FOLDER=${var.image_folder}", "TEMP_DIR=${var.temp_dir}"]
@@ -360,6 +344,23 @@ build {
       "${path.root}/../scripts/build/Configure-ImageDataFile.ps1",
       "${path.root}/../scripts/build/Configure-SystemEnvironment.ps1",
       "${path.root}/../scripts/build/Configure-DotnetSecureChannel.ps1"
+    ]
+  }
+
+  provisioner "powershell" {
+    script       = "../scripts/build/Install-CloudBase.ps1"
+    pause_before = "1m"
+  }
+
+  provisioner "file" {
+    source      = "../assets/base-image/config/"
+    destination = "C://Program Files//Cloudbase Solutions//Cloudbase-Init//conf"
+  }
+
+  provisioner "powershell" {
+    inline = [
+      "Set-Service cloudbase-init -StartupType Manual",
+      "Stop-Service cloudbase-init -Force -Confirm:$false"
     ]
   }
 
