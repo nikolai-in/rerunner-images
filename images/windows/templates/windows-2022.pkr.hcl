@@ -165,7 +165,20 @@ variable "install_password" {
   sensitive = true
 }
 
-source "proxmox-iso" "windows" {
+// Add new variable for template name
+variable "base_template_name" {
+  type        = string
+  description = "Name of the base template to create/clone"
+  default     = "templ-win22-base"
+}
+
+variable "runner_template_name" {
+  type        = string
+  description = "Name of the final runner template"
+  default     = "templ-win22-runner"
+}
+
+source "proxmox-iso" "windows-base" {
 
   # Proxmox Host Connection
   proxmox_url              = var.proxmox_url
@@ -211,9 +224,9 @@ source "proxmox-iso" "windows" {
     index            = 0
   }
 
-  template_name           = "templ-win22-runner"
-  template_description    = "Created on: ${timestamp()}"
-  vm_name                 = "win-runner"
+  template_name           = var.base_template_name
+  template_description    = "Windows Server 2022 Base Image. Created on: ${timestamp()}"
+  vm_name                 = "win-base-temp"
   memory                  = var.memory
   cores                   = var.cores
   sockets                 = var.socket
@@ -254,16 +267,45 @@ source "proxmox-iso" "windows" {
   boot_command = [
     "<enter><wait><enter>",
   ]
-
 }
 
+source "proxmox-clone" "windows-runner" {
+  # Proxmox Host Connection
+  proxmox_url              = var.proxmox_url
+  insecure_skip_tls_verify = true
+  username                 = var.proxmox_user
+  password                 = var.proxmox_password
+  node                     = var.node
+
+  # Clone settings
+  clone_vm             = var.base_template_name
+  template_name        = var.runner_template_name
+  template_description = "Windows Server 2022 GitHub Runner. Created on: ${timestamp()}"
+  vm_name              = "win-runner-temp"
+
+  # Keep the same hardware
+  full_clone              = true
+  memory                  = var.memory
+  cores                   = var.cores
+  sockets                 = var.socket
+  cloud_init              = true
+  cloud_init_storage_pool = var.cloud_init_storage
+
+  # WinRM
+  communicator   = "winrm"
+  winrm_username = var.install_user
+  winrm_password = var.install_password
+  winrm_timeout  = "1h"
+  winrm_port     = "5986"
+  winrm_use_ssl  = true
+  winrm_insecure = true
+}
 
 build {
-  name    = "Proxmox Build"
-  sources = ["source.proxmox-iso.windows"]
+  name    = "Proxmox Base Build"
+  sources = ["source.proxmox-iso.windows-base"]
 
   // Update & Install cloudbase-init
-
   provisioner "windows-restart" {
   }
 
@@ -275,13 +317,69 @@ build {
     ]
   }
 
-
   provisioner "powershell" {
     inline = [
       "New-Item -Path ${var.image_folder} -ItemType Directory -Force",
       "New-Item -Path ${var.temp_dir} -ItemType Directory -Force"
     ]
   }
+
+  provisioner "file" {
+    destination = "${var.image_folder}\\"
+    sources = [
+      "${path.root}/../assets",
+      "${path.root}/../scripts",
+      "${path.root}/../toolsets"
+    ]
+  }
+
+  provisioner "windows-shell" {
+    inline = [
+      "net user ${var.install_user} ${var.install_password} /add /passwordchg:no /passwordreq:yes /active:yes /Y",
+      "net localgroup Administrators ${var.install_user} /add",
+      "winrm set winrm/config/service/auth @{Basic=\"true\"}",
+      "winrm get winrm/config/service/auth"
+    ]
+  }
+
+  provisioner "powershell" {
+    inline = ["if (-not ((net localgroup Administrators) -contains '${var.install_user}')) { exit 1 }"]
+  }
+
+  provisioner "powershell" {
+    environment_vars = ["IMAGE_VERSION=${var.image_version}", "IMAGE_OS=${var.image_os}"]
+    execution_policy = "unrestricted"
+    scripts = [
+      "${path.root}/../scripts/build/Configure-WindowsDefender.ps1",
+      "${path.root}/../scripts/build/Configure-PowerShell.ps1"
+    ]
+  }
+
+  provisioner "powershell" {
+    script       = "../scripts/build/Install-CloudBase.ps1"
+    pause_before = "1m"
+  }
+
+  provisioner "file" {
+    source      = "../assets/base-image/config/"
+    destination = "C://Program Files//Cloudbase Solutions//Cloudbase-Init//conf"
+  }
+
+  provisioner "powershell" {
+    inline = [
+      "Set-Service cloudbase-init -StartupType Manual",
+      "Stop-Service cloudbase-init -Force -Confirm:$false"
+    ]
+  }
+
+  provisioner "windows-restart" {
+    restart_timeout = "10m"
+  }
+}
+
+build {
+  name    = "Proxmox Runner Build"
+  sources = ["source.proxmox-clone.windows-runner"]
 
   provisioner "file" {
     destination = "${var.image_folder}\\"
@@ -312,31 +410,10 @@ build {
     ]
   }
 
-  provisioner "windows-shell" {
-    inline = [
-      "net user ${var.install_user} ${var.install_password} /add /passwordchg:no /passwordreq:yes /active:yes /Y",
-      "net localgroup Administrators ${var.install_user} /add",
-      "winrm set winrm/config/service/auth @{Basic=\"true\"}",
-      "winrm get winrm/config/service/auth"
-    ]
-  }
-
-  provisioner "powershell" {
-    inline = ["if (-not ((net localgroup Administrators) -contains '${var.install_user}')) { exit 1 }"]
-  }
-
-  # provisioner "powershell" {
-  # elevated_password = "${var.install_password}"
-  # elevated_user     = "${var.install_user}"
-  # inline            = ["bcdedit.exe /set TESTSIGNING ON"]
-  # }
-
   provisioner "powershell" {
     environment_vars = ["IMAGE_VERSION=${var.image_version}", "IMAGE_OS=${var.image_os}", "AGENT_TOOLSDIRECTORY=${var.agent_tools_directory}", "IMAGEDATA_FILE=${var.imagedata_file}", "IMAGE_FOLDER=${var.image_folder}", "TEMP_DIR=${var.temp_dir}"]
     execution_policy = "unrestricted"
     scripts = [
-      "${path.root}/../scripts/build/Configure-WindowsDefender.ps1",
-      "${path.root}/../scripts/build/Configure-PowerShell.ps1",
       "${path.root}/../scripts/build/Install-PowerShellModules.ps1",
       "${path.root}/../scripts/build/Install-WindowsFeatures.ps1",
       "${path.root}/../scripts/build/Install-Chocolatey.ps1",
@@ -344,23 +421,6 @@ build {
       "${path.root}/../scripts/build/Configure-ImageDataFile.ps1",
       "${path.root}/../scripts/build/Configure-SystemEnvironment.ps1",
       "${path.root}/../scripts/build/Configure-DotnetSecureChannel.ps1"
-    ]
-  }
-
-  provisioner "powershell" {
-    script       = "../scripts/build/Install-CloudBase.ps1"
-    pause_before = "1m"
-  }
-
-  provisioner "file" {
-    source      = "../assets/base-image/config/"
-    destination = "C://Program Files//Cloudbase Solutions//Cloudbase-Init//conf"
-  }
-
-  provisioner "powershell" {
-    inline = [
-      "Set-Service cloudbase-init -StartupType Manual",
-      "Stop-Service cloudbase-init -Force -Confirm:$false"
     ]
   }
 
@@ -564,5 +624,4 @@ build {
       "C:\\Windows\\System32\\Sysprep\\Sysprep.exe /oobe /generalize /unattend:unattend.xml"
     ]
   }
-
 }
